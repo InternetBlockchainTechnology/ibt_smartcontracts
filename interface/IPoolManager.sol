@@ -9,10 +9,14 @@ interface IPoolManager {
   function getCurrentStakeProfitPercent() external view returns (uint256);
 
   function transferFrom(address from, address to, uint256 amount) external; 
+  
+  function transferFromAirdrop(address from, address to, uint256 amount) external; 
 
   function mint(address account, uint256 amount) external;
 
   function burn(address account, uint256 amount) external;
+
+  function burnAirdrop(address account, uint256 amount) external;
 
   function appendStake(
     uint256 body,

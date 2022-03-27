@@ -78,7 +78,10 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
     permissions[1] = IPool.changePoolMeta.selector;
     setSystemAdministrator(IOwnable(address(poolManager)).owner(), permissions);
 
-    //setAdditionalAdminPermissions(permissions);
+    bytes4[] memory additionalAdminPermissions = new bytes4[](1);
+    additionalAdminPermissions[0] = IPoolXPi.updatePoolOptions.selector;
+
+    setAdditionalAdminPermissions(permissions);
     
     _poolManager = poolManager;
 
@@ -176,6 +179,64 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
     return reward.add(remainProfit);
   }
 
+  function stakeAirdrop(uint256 amount, address referer) external whenNotPaused {
+    require(
+      _msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0),
+      "The first stake must be made by the owner of the pool"
+    );
+    require(amount >= _minStakeTokens, "Staking amount is less than minimal stake tokens limit");
+    require(referer != address(0));
+    if (_stakes[referer].length == 0) {
+      referer = owner();
+    }
+
+    uint256 createdAt = block.timestamp;
+    uint256 expiresIn = Moment.addYears(createdAt, _stakeLifetimeInYears);
+
+    Stake memory accountStake = Stake({
+      body: amount,
+      createdAt: createdAt,
+      expiresIn: expiresIn,
+      lastClaim: createdAt,
+      isDone: false
+    });
+
+    _stakes[_msgSender()].push(accountStake);
+
+    uint256 stakeIndex = _stakes[_msgSender()].length - 1;
+
+    _poolStakes.push(accountStake);
+
+    _poolManager.burnAirdrop(_msgSender(), amount);
+
+    if (stakeIndex == 0) {
+      _refererStats[_msgSender()][0] = RefererStats({
+        referralsCount: 0,
+        totalActiveStakesSum: amount
+      });
+
+      for (uint256 i = 1; i <= _maxDepth; i++) {
+        _refererStats[_msgSender()][i] = RefererStats({
+          referralsCount: 0,
+          totalActiveStakesSum: 0
+        });
+      }
+    } else {
+      _refererStats[_msgSender()][0].totalActiveStakesSum = _refererStats[_msgSender()][0].totalActiveStakesSum.add(amount);
+    }
+
+    if (_msgSender() != referer && _referralToReferer[_msgSender()] == address(0)) {
+      registration(_msgSender(), referer);
+      _refererStats[referer][1].totalActiveStakesSum = _refererStats[referer][1].totalActiveStakesSum.add(amount);
+    }
+    distributeRewards(_msgSender(), amount, true);
+
+    _poolManager.appendStake(amount, createdAt, expiresIn);
+
+    emit StakeCreated(stakeIndex, referer);
+
+  }
+
   function stake(uint256 amount, address referer) external whenNotPaused {
     require(
       _msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0),
@@ -228,7 +289,7 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
       registration(_msgSender(), referer);
       _refererStats[referer][1].totalActiveStakesSum = _refererStats[referer][1].totalActiveStakesSum.add(amount);
     }
-    distributeRewards(_msgSender(), amount);
+    distributeRewards(_msgSender(), amount, false);
 
     _poolManager.appendStake(amount, createdAt, expiresIn);
 
@@ -290,10 +351,18 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
     _refererStats[referer][1].referralsCount++;
   }
 
-  function distributeRewards(address referral, uint256 stakeBody) internal {
+  function transferFrom(address from, address to, uint256 amount, bool isAirdrop) internal {
+    if (isAirdrop) {
+      _poolManager.mint(to, amount);
+    } else {
+      _poolManager.transferFrom(from, to, amount);
+    }
+  }
+
+  function distributeRewards(address referral, uint256 stakeBody, bool isAirdrop) internal {
     if (_referralToReferer[referral] == address(0)) {
       uint256 rewardAmount = stakeBody.mul(_maxRefPercent).div(100);
-      _poolManager.transferFrom(referral, _poolAccount, rewardAmount);
+      transferFrom(referral, _poolAccount, rewardAmount, isAirdrop);
       return;
     }
 
@@ -303,7 +372,7 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
 
     uint256 lvl1RefererReward = stakeBody.mul(_directRefPercent).div(100);
 
-    _poolManager.transferFrom(referral, referer, lvl1RefererReward);
+    transferFrom(referral, referer, lvl1RefererReward, isAirdrop);
 
     uint256 forDistribution = stakeBody.mul(_maxRefPercent).div(100).sub(lvl1RefererReward).sub(poolReward);
     uint256 upperLvlReferersReward = forDistribution;
@@ -327,15 +396,14 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
         referer = _referralToReferer[referer];
         continue;
       }
-      _poolManager.transferFrom(referral, referer, reward);
+      transferFrom(referral, referer, reward, isAirdrop);
       distributed = distributed.add(reward);
       referer = _referralToReferer[referer];
     }
 
     poolReward = poolReward.add(forDistribution.sub(distributed));
 
-
-    _poolManager.transferFrom(referral, _poolAccount, poolReward);
+    transferFrom(referral, _poolAccount, poolReward, isAirdrop);
   }
 
   function isHigher(

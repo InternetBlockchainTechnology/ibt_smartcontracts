@@ -4,21 +4,17 @@ pragma solidity ^0.8.8;
 
 import "./ERC20/ERC20.sol";
 import "./lib/Ownable.sol";
-import "./lib/SafeMath.sol";
 import "./interface/IPoolManager.sol";
 import "./interface/IERC20IBT.sol";
-import "../node_modules/hardhat/console.sol";
 
 contract Token is ERC20, IERC20IBT, Ownable {
-  using SafeMath for uint256;
-
   IPoolManager public _poolManager;
 
   string private _name = "International Blockchain Technology";
   string private _symbol = "IBT";
 
   constructor() ERC20(_name, _symbol) {
-    _mint(_msgSender(), 20000000 * 10 ** decimals());
+    _mint(_msgSender(), 19820000 * 10 ** decimals());
   }
 
   modifier onlyPoolManager() {
@@ -46,7 +42,6 @@ contract Token is ERC20, IERC20IBT, Ownable {
 
   function setPoolManager(IPoolManager poolManager) external onlyOwner {
     require(address(_poolManager) == address(0), "Pool manager already installed");
-    console.logAddress(address(poolManager));
     _poolManager = poolManager;
   }
 }

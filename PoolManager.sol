@@ -19,6 +19,7 @@ contract PoolManager is IPoolManager, AccessControl {
   uint256 _timelapsOffset = 0;
 
   IERC20IBT public _token;
+  IERC20IBT public _airdropToken;
   IPoolFactory public _poolFactory;
   IPoolXPiFactory public _poolXPiFactory;
   bool public _XPiCreated;
@@ -54,6 +55,7 @@ contract PoolManager is IPoolManager, AccessControl {
 
   constructor(
     IERC20IBT token,
+    IERC20IBT airdropToken,
     IPoolFactory poolFactory,
     IPoolXPiFactory poolXPiFactory
   ) {
@@ -64,6 +66,7 @@ contract PoolManager is IPoolManager, AccessControl {
     setAdditionalAdminPermissions(permissions);
 
     _token = token;
+    _airdropToken = airdropToken;
     _poolFactory = poolFactory;
     _poolXPiFactory = poolXPiFactory;
     createStakeProfitTable();
@@ -164,6 +167,14 @@ contract PoolManager is IPoolManager, AccessControl {
 
   function burn(address account, uint256 amount) external onlyPool {
     _token.poolManagerBurn(account, amount);
+  }
+
+  function transferFromAirdrop(address from, address to, uint256 amount) external onlyPool {
+    _airdropToken.poolManagerTransferFrom(from, to, amount);
+  }
+
+  function burnAirdrop(address account, uint256 amount) external onlyPool {
+    _airdropToken.poolManagerBurn(account, amount);
   }
 
   /* \Token proxy */
