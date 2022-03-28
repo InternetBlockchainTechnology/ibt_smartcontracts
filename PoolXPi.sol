@@ -122,7 +122,8 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
   }
 
 
-  function pause(bool status) external checkAccess(IPool.pause.selector) {
+  function pause(bool status) external {
+    require(_msgSender() == address(_poolManager) || hasPermission(_msgSender(), IPool.pause.selector));
     status == true ? _pause() : _unpause();
   }
 
