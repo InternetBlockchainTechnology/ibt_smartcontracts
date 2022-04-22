@@ -5,16 +5,16 @@ pragma solidity ^0.8.8;
 library Moment {
   uint256 constant SECONDS_PER_DAY = 24 * 60 * 60;
   uint256 constant SECONDS_PER_HOUR = 60 * 60;
-  uint256 constant SECONDS_PER_MINUTE = 60;
+  //uint256 constant SECONDS_PER_MINUTE = 60;
   int256 constant OFFSET19700101 = 2440588;
 
-  uint256 constant DOW_MON = 1;
-  uint256 constant DOW_TUE = 2;
-  uint256 constant DOW_WED = 3;
-  uint256 constant DOW_THU = 4;
-  uint256 constant DOW_FRI = 5;
-  uint256 constant DOW_SAT = 6;
-  uint256 constant DOW_SUN = 7;
+  // uint256 constant DOW_MON = 1;
+  // uint256 constant DOW_TUE = 2;
+  // uint256 constant DOW_WED = 3;
+  // uint256 constant DOW_THU = 4;
+  // uint256 constant DOW_FRI = 5;
+  // uint256 constant DOW_SAT = 6;
+  // uint256 constant DOW_SUN = 7;
 
   function _daysFromDate(
     uint256 year,

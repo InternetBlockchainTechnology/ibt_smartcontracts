@@ -3,9 +3,11 @@
 pragma solidity ^0.8.8;
 
 interface IPool {
-  function changePoolMeta(string memory name, string memory site) external;
+  // function changePoolMeta(string memory name, string memory site) external;
 
   function updatePoolOptions(
+    string memory name,
+    string memory site,
     uint256 minStakeTokens,
     uint256[] memory refLevelsWithPercent,
     uint256 poolRefPercent,
@@ -26,9 +28,11 @@ interface IPool {
 
   event Claim(uint256 stakeIndex);
 
-  event PoolMetaChanged(string newName, string newSite);
+  // event PoolMetaChanged(string newName, string newSite);
 
   event PoolOptionsChanged(
+    string name,
+    string site,
     uint256 minStakeTokens,
     uint256[] refLevelsWithPercent,
     uint256 poolRefPercent,
@@ -37,9 +41,11 @@ interface IPool {
 }
 
 interface IPoolXPi {
-  function changePoolMeta(string memory name, string memory site) external;
+  // function changePoolMeta(string memory name, string memory site) external;
 
   function updatePoolOptions(
+    string memory name,
+    string memory site,
     uint256 minStakeTokens,
     address poolAccount
   ) external;
@@ -58,9 +64,11 @@ interface IPoolXPi {
   
   event Claim(uint256 stakeIndex);
 
-  event PoolMetaChanged(string newName, string newSite);
+  // event PoolMetaChanged(string newName, string newSite);
 
   event PoolOptionsChanged(
+    string name,
+    string site,
     uint256 minStakeTokens,
     uint256[] refLevelsWithPercent,
     uint256 poolRefPercent,

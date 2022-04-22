@@ -16,8 +16,6 @@ import "./interface/IPoolXPiFactory.sol";
 contract PoolManager is IPoolManager, AccessControl {
   using SafeMath for uint256;
 
-  uint256 _timelapsOffset = 0;
-
   IERC20IBT public _token;
   IERC20IBT public _airdropToken;
   IPoolFactory public _poolFactory;
@@ -90,6 +88,7 @@ contract PoolManager is IPoolManager, AccessControl {
   }
 
   function updateTeamWallet(address newWallet, uint256 index) external onlyOwner {
+    require(index < _teamWallets.length);
     emit TeamWalletChanged(index, newWallet);
     _teamWallets[index] = newWallet;
   }
@@ -102,27 +101,25 @@ contract PoolManager is IPoolManager, AccessControl {
     require(_initialStakeProfitTimestamp == 0);
     _initialStakeProfitTimestamp = block.timestamp;
 
-    for (uint256 fullYearsPassed = 0; fullYearsPassed < 10; fullYearsPassed++) {
-      if (fullYearsPassed <= 10) {
-        _stakeProfitTable.push(
-          [
-            Moment.addYears(_initialStakeProfitTimestamp.add(1), fullYearsPassed),
-            Moment.addYears(_initialStakeProfitTimestamp, fullYearsPassed.add(1)),
-            _initialStakeProfitPercent.sub(fullYearsPassed)
-          ]
-        );
-      }
+    for (uint256 fullYearsPassed = 0; fullYearsPassed <= 10; fullYearsPassed++) {
+      _stakeProfitTable.push(
+        [
+          Moment.addYears(_initialStakeProfitTimestamp.add(1), fullYearsPassed),
+          Moment.addYears(_initialStakeProfitTimestamp, fullYearsPassed.add(1)),
+          _initialStakeProfitPercent.sub(fullYearsPassed)
+        ]
+      );
     }
     _stakeProfitTable.push(
       [
-        Moment.addYears(_initialStakeProfitTimestamp, 11),
+        Moment.addYears(_initialStakeProfitTimestamp.add(1), 11),
         Moment.addYears(_initialStakeProfitTimestamp, 21),
         _initialStakeProfitPercent.sub(10)
       ]
     );
     _stakeProfitTable.push(
       [
-        Moment.addYears(_initialStakeProfitTimestamp + 1, 21),
+        Moment.addYears(_initialStakeProfitTimestamp.add(1), 21),
         Moment.addYears(_initialStakeProfitTimestamp, 24),
         _initialStakeProfitPercent.sub(15)
       ]
@@ -193,12 +190,13 @@ contract PoolManager is IPoolManager, AccessControl {
 
   function createXPi(address owner, uint256 minStakeTokens, address poolAccount) external onlyOwner {
     require(!_XPiCreated);
+    _XPiCreated = true;
     IPool pool = _poolXPiFactory.create(owner, IPoolManager(address(this)), minStakeTokens, poolAccount);
 
     _pools.push(address(pool));
     _poolsTable[address(pool)] = true;
     _poolIndexTable[address(pool)] = _pools.length - 1;
-
+    
     emit PoolCreated(_pools.length - 1, 0);
   }
   
@@ -250,14 +248,8 @@ contract PoolManager is IPoolManager, AccessControl {
     }
 
     for (i; i < meta.stakes.length; i++) {
-      bool lastIsExpiried = false;
 
       if (currentTimestamp < meta.stakes[i][2]) {
-        if (lastIsExpiried && meta.mark.lastAggregatedBody > 0) {
-          secondsPassed = Moment.diffSeconds(meta.lastMint, currentTimestamp);
-          totalReward = totalReward.add(calculateTotalReward(meta.mark.lastAggregatedBody, secondsPassed));
-        }
-
         if (i < meta.mark.fromIndex) {
           i = meta.mark.fromIndex;
         }
@@ -278,7 +270,6 @@ contract PoolManager is IPoolManager, AccessControl {
         if (meta.mark.lastAggregatedBody > 0) {
           meta.mark.lastAggregatedBody = meta.mark.lastAggregatedBody.sub(meta.stakes[i][0]);
         }
-        lastIsExpiried = true;
       }
     }
 
@@ -311,14 +302,7 @@ contract PoolManager is IPoolManager, AccessControl {
       iterations++;
       if (iterations > _maxMintRewardIterations) break;
 
-      bool lastIsExpiried = false;
-
       if (currentTimestamp < meta.stakes[i][2]) {
-        if (lastIsExpiried && meta.mark.lastAggregatedBody > 0) {
-          secondsPassed = Moment.diffSeconds(meta.lastMint, currentTimestamp);
-          totalReward = totalReward.add(calculateTotalReward(meta.mark.lastAggregatedBody, secondsPassed));
-        }
-
         if (i < meta.mark.fromIndex) {
           i = meta.mark.fromIndex;
         }
@@ -330,7 +314,6 @@ contract PoolManager is IPoolManager, AccessControl {
       } else {
         secondsPassed = Moment.diffSeconds(meta.lastMint, meta.stakes[i][2]);
         totalReward = totalReward.add(calculateTotalReward(meta.stakes[i][0], secondsPassed));
-        lastIsExpiried = true;
       }
     }
 
@@ -349,8 +332,9 @@ contract PoolManager is IPoolManager, AccessControl {
 
   function distributeTeamProfitForPool(uint256 teamProfit) internal {
     uint256 teamProfitPart = teamProfit.div(5);
-    uint256 teamProfitRemainder = teamProfit.sub(teamProfitPart);
+    uint256 teamProfitRemainder = teamProfit.mod(5);
     for (uint8 i = 0; i < _teamWallets.length; i++) {
+      if (_teamWallets[i] == address(0)) continue;
       uint256 reward = i == 0 ? teamProfitPart.add(teamProfitRemainder) : teamProfitPart;
       _token.poolManagerMint(_teamWallets[i], reward);
     }

@@ -10,13 +10,15 @@ import "./interface/IERC20IBT.sol";
 contract TokenAirdrop is ERC20, IERC20IBT, Ownable {
 
   IPoolManager public _poolManager;
-  address public _xpiAddress;
 
-  string private _name = "International Blockchain Technology Airdrop";
-  string private _symbol = "IBTA";
+  mapping(address => bool) public _whiteList;
+
+  string private _name = "IBT Air";
+  string private _symbol = "IBT Air";
 
   constructor() ERC20(_name, _symbol) {
     _mint(_msgSender(), 180000 * 10 ** decimals());
+    _whiteList[_msgSender()] = true;
   }
 
   modifier onlyPoolManager() {
@@ -47,20 +49,23 @@ contract TokenAirdrop is ERC20, IERC20IBT, Ownable {
     _poolManager = poolManager;
   }
 
-  function setXPi(address xpiAddress) external onlyOwner {
-    require(_xpiAddress == address(0), "Xpi address already installed");
-    _xpiAddress = xpiAddress;
+  function addToWhiteList(address addr) external onlyOwner {
+    _whiteList[addr] = true;
+  }
+
+  function removeFromWhiteList(address addr) external onlyOwner {
+    _whiteList[addr] = false;
   }
 
   function transfer(address to, uint256 amount) public override returns(bool) {
-    require(to == _xpiAddress || to == address(0), "Airdrop tokens only for staking");
+    require(_whiteList[to] || _whiteList[_msgSender()]);
     address owner = _msgSender();
     _transfer(owner, to, amount);
     return true;
   }
 
   function transferFrom(address from, address to, uint256 amount) public override returns(bool) {
-    require(to == _xpiAddress || to == address(0), "Airdrop tokens only for staking");
+   require(_whiteList[from] || _whiteList[to] || _whiteList[_msgSender()]);
     address spender = _msgSender();
     _spendAllowance(from, spender, amount);
     _transfer(from, to, amount);

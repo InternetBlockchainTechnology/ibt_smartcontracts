@@ -49,6 +49,8 @@ contract Pool is IPool, AccessControl, Pausable {
   string public _name;
   string public _site;
 
+  uint256 _startedAt;
+
   constructor(
     IPoolManager poolManager,
     string memory name,
@@ -59,16 +61,17 @@ contract Pool is IPool, AccessControl, Pausable {
     address poolAccount
   ) {
     updatePoolOptions(
+      name,
+      site,
       minStakeTokens,
       refLevelsWithPercent,
       poolRefPercent,
       poolAccount
     );
 
-    bytes4[] memory permissions = new bytes4[](3);
+    bytes4[] memory permissions = new bytes4[](1);
 
     permissions[0] = IPool.pause.selector;
-    permissions[1] = IPool.changePoolMeta.selector;
     setSystemAdministrator(IOwnable(address(poolManager)).owner(), permissions);
 
     bytes4[] memory additionalAdminPermissions = new bytes4[](1);
@@ -78,17 +81,18 @@ contract Pool is IPool, AccessControl, Pausable {
     
     _poolManager = poolManager;
 
-    _name = name;
-    _site = site;
+    _startedAt = block.timestamp;
   }
 
-  function changePoolMeta(string memory name, string memory site) public checkAccess(IPool.changePoolMeta.selector) {
-    _name = name;
-    _site = site;
-    emit PoolMetaChanged(name, site);
-  }
+  // function changePoolMeta(string memory name, string memory site) public checkAccess(IPool.changePoolMeta.selector) {
+  //   _name = name;
+  //   _site = site;
+  //   emit PoolMetaChanged(name, site);
+  // }
 
   function updatePoolOptions(
+    string memory name,
+    string memory site,
     uint256 minStakeTokens,
     uint256[] memory refLevelsWithPercent,
     uint256 poolRefPercent,
@@ -106,7 +110,11 @@ contract Pool is IPool, AccessControl, Pausable {
     _refLevelsWithPercent = refLevelsWithPercent;
     _poolRefPercent = poolRefPercent;
     _poolAccount = poolAccount;
+    _name = name;
+    _site = site;
     emit PoolOptionsChanged(
+      name,
+      site,
       minStakeTokens,
       refLevelsWithPercent,
       poolRefPercent,
@@ -168,13 +176,12 @@ contract Pool is IPool, AccessControl, Pausable {
   }
 
   function stake(uint256 amount, address referer) external whenNotPaused {
-    require(
-      _msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0),
-      "The first stake must be made by the owner of the pool"
-    );
-    require(amount >= _minStakeTokens, "Staking amount is less than minimal stake tokens limit");
-    require(referer != address(0));
-    if (_stakes[referer].length == 0) {
+    if (referer == address(0)) {
+      require(block.timestamp > _startedAt + 24 hours * 3);
+    }
+    require(_msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0));
+    require(amount >= _minStakeTokens);
+    if (_stakes[referer].length == 0 || referer == address(0)) {
       referer = owner();
     }
 
@@ -205,7 +212,7 @@ contract Pool is IPool, AccessControl, Pausable {
 
     _poolManager.appendStake(amount, createdAt, expiresIn);
 
-    emit StakeCreated(_stakes[_msgSender()].length - 1, referer);
+    emit StakeCreated(_stakes[_msgSender()].length - 1, _referralToReferer[_msgSender()]);
   }
 
   function claimFromStake(uint256 stakeIndex) external {
@@ -238,6 +245,7 @@ contract Pool is IPool, AccessControl, Pausable {
     uint256 totalClaimReward = 0;
     address account = _msgSender();
     for (uint256 i = _lastAccountExpiriedStakeIndex[account]; i < _stakes[account].length; i++) {
+      if(_stakes[account][i].isDone) continue;
       uint256 reward = calculateClaimReward(account, i);
       _stakes[account][i].lastClaim = block.timestamp;
       if (_stakes[account][i].lastClaim >= _stakes[account][i].expiresIn) {

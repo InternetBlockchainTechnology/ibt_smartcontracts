@@ -65,17 +65,19 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
   string public _name;
   string public _site;
 
+  uint256 _startedAt;
+
   constructor(
     IPoolManager poolManager,
     uint256 minStakeTokens,
     address poolAccount
   ) {
-    updatePoolOptions(minStakeTokens, poolAccount);
+    updatePoolOptions("X3.14", "https://x314.site", minStakeTokens, poolAccount);
 
-    bytes4[] memory permissions = new bytes4[](2);
+    bytes4[] memory permissions = new bytes4[](1);
     
-    permissions[0] = IPool.pause.selector;
-    permissions[1] = IPool.changePoolMeta.selector;
+    permissions[0] = IPoolXPi.pause.selector;
+    // permissions[1] = IPool.changePoolMeta.selector;
     setSystemAdministrator(IOwnable(address(poolManager)).owner(), permissions);
 
     bytes4[] memory additionalAdminPermissions = new bytes4[](1);
@@ -85,12 +87,19 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
     
     _poolManager = poolManager;
 
-    _name = "XPi";
-    _site = "";
+    _startedAt = block.timestamp;
   }
 
-  function addRefLevel(uint256 minStakesAmount, uint256 minReferrals, uint256 minReferralsStakesAmount, uint8 depth) external onlyOwner {
-    require(_refererLevels.length <= 10);
+  function updateRefLevel(uint256 minStakesAmount, uint256 minReferrals, uint256 minReferralsStakesAmount, uint8 depth, uint256 index) external onlyOwner {
+    _refererLevels[index] = RefererLevel({
+      minStakesAmount: minStakesAmount,
+      minReferrals: minReferrals,
+      minReferralsStakesAmount: minReferralsStakesAmount,
+      depth: depth
+    });
+  }
+
+  function pushRefLevel(uint256 minStakesAmount, uint256 minReferrals, uint256 minReferralsStakesAmount, uint8 depth) external onlyOwner {
     _refererLevels.push(RefererLevel({
       minStakesAmount: minStakesAmount,
       minReferrals: minReferrals,
@@ -99,13 +108,15 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
     }));
   }
 
-  function changePoolMeta(string memory name, string memory site) public checkAccess(IPool.changePoolMeta.selector) {
-    _name = name;
-    _site = site;
-    emit PoolMetaChanged(name, site);
-  }
+  // function changePoolMeta(string memory name, string memory site) public checkAccess(IPool.changePoolMeta.selector) {
+  //   _name = name;
+  //   _site = site;
+  //   emit PoolMetaChanged(name, site);
+  // }
 
   function updatePoolOptions(
+    string memory name,
+    string memory site,
     uint256 minStakeTokens,
     address poolAccount
   ) public override checkAccess(IPoolXPi.updatePoolOptions.selector) {
@@ -113,7 +124,11 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
     require(poolAccount != address(0));
     _minStakeTokens = minStakeTokens;
     _poolAccount = poolAccount;
+    _name = name;
+    _site = site;
     emit PoolOptionsChanged(
+      name,
+      site,
       minStakeTokens,
       new uint256[](0),
       0,
@@ -123,7 +138,7 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
 
 
   function pause(bool status) external {
-    require(_msgSender() == address(_poolManager) || hasPermission(_msgSender(), IPool.pause.selector));
+    require(_msgSender() == address(_poolManager) || hasPermission(_msgSender(), IPoolXPi.pause.selector));
     status == true ? _pause() : _unpause();
   }
 
@@ -180,17 +195,7 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
     return reward.add(remainProfit);
   }
 
-  function stakeAirdrop(uint256 amount, address referer) external whenNotPaused {
-    require(
-      _msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0),
-      "The first stake must be made by the owner of the pool"
-    );
-    require(amount >= _minStakeTokens, "Staking amount is less than minimal stake tokens limit");
-    require(referer != address(0));
-    if (_stakes[referer].length == 0) {
-      referer = owner();
-    }
-
+  function createStake(uint256 amount) internal returns(uint256) {
     uint256 createdAt = block.timestamp;
     uint256 expiresIn = Moment.addYears(createdAt, _stakeLifetimeInYears);
 
@@ -208,8 +213,12 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
 
     _poolStakes.push(accountStake);
 
-    _poolManager.burnAirdrop(_msgSender(), amount);
+    _poolManager.appendStake(amount, createdAt, expiresIn);
 
+    return stakeIndex;
+  }
+
+  function refFlow(uint256 stakeIndex, uint256 amount, address referer, bool isAirdrop) internal {
     if (stakeIndex == 0) {
       _refererStats[_msgSender()][0] = RefererStats({
         referralsCount: 0,
@@ -230,77 +239,53 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
       registration(_msgSender(), referer);
       _refererStats[referer][1].totalActiveStakesSum = _refererStats[referer][1].totalActiveStakesSum.add(amount);
     }
-    distributeRewards(_msgSender(), amount, true);
-
-    _poolManager.appendStake(amount, createdAt, expiresIn);
-
-    emit StakeCreated(stakeIndex, referer);
-
+    distributeRewards(_msgSender(), amount, isAirdrop);
   }
 
-  function stake(uint256 amount, address referer) external whenNotPaused {
-    require(
-      _msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0),
-      "The first stake must be made by the owner of the pool"
-    );
-    require(amount >= _minStakeTokens, "Staking amount is less than minimal stake tokens limit");
-    require(referer != address(0));
-    if (_stakes[referer].length == 0) {
+  function stakeAirdrop(uint256 amount, address referer) external whenNotPaused {
+    if (referer == address(0)) {
+      require(block.timestamp > _startedAt + 24 hours * 3);
+    }
+    require(_msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0));
+    require(amount >= _minStakeTokens);
+    if (_stakes[referer].length == 0 || referer == address(0)) {
       referer = owner();
     }
 
-    uint256 createdAt = block.timestamp;
-    uint256 expiresIn = Moment.addYears(createdAt, _stakeLifetimeInYears);
+    uint256 stakeIndex = createStake(amount);
 
-    Stake memory accountStake = Stake({
-      body: amount,
-      createdAt: createdAt,
-      expiresIn: expiresIn,
-      lastClaim: createdAt,
-      isDone: false
-    });
+    _poolManager.burnAirdrop(_msgSender(), amount);
 
-    _stakes[_msgSender()].push(accountStake);
+    refFlow(stakeIndex, amount, referer, true);
 
-    uint256 stakeIndex = _stakes[_msgSender()].length - 1;
+    emit StakeCreated(stakeIndex, referer);
+  }
 
-    _poolStakes.push(accountStake);
+  function stake(uint256 amount, address referer) external whenNotPaused {
+    if (referer == address(0)) {
+      require(block.timestamp > _startedAt + 24 hours * 3);
+    }
+    require(_msgSender() == owner() || (_msgSender() != owner() && _stakes[owner()].length > 0));
+    require(amount >= _minStakeTokens);
+    if (_stakes[referer].length == 0 || referer == address(0)) {
+      referer = owner();
+    }
+    
+    uint256 stakeIndex = createStake(amount);
 
     uint256 burnAmount = amount.mul(_burnPercent).div(100);
 
     _poolManager.burn(_msgSender(), burnAmount);
 
-    if (stakeIndex == 0) {
-      _refererStats[_msgSender()][0] = RefererStats({
-        referralsCount: 0,
-        totalActiveStakesSum: amount
-      });
-
-      for (uint256 i = 1; i <= _maxDepth; i++) {
-        _refererStats[_msgSender()][i] = RefererStats({
-          referralsCount: 0,
-          totalActiveStakesSum: 0
-        });
-      }
-    } else {
-      _refererStats[_msgSender()][0].totalActiveStakesSum = _refererStats[_msgSender()][0].totalActiveStakesSum.add(amount);
-    }
-
-    if (_msgSender() != referer && _referralToReferer[_msgSender()] == address(0)) {
-      registration(_msgSender(), referer);
-      _refererStats[referer][1].totalActiveStakesSum = _refererStats[referer][1].totalActiveStakesSum.add(amount);
-    }
-    distributeRewards(_msgSender(), amount, false);
-
-    _poolManager.appendStake(amount, createdAt, expiresIn);
+    refFlow(stakeIndex, amount, referer, false);
 
     emit StakeCreated(stakeIndex, referer);
-
   }
+
   function claimFromStake(uint256 stakeIndex) external {
     address account = _msgSender();
-    require(_stakes[account].length > 0, "You must have stakes to collect rewards");
-    require(_stakes[account][stakeIndex].body > 0 && !_stakes[account][stakeIndex].isDone, "already done");
+    require(_stakes[account].length > 0);
+    require(_stakes[account][stakeIndex].body > 0 && !_stakes[account][stakeIndex].isDone);
     uint256 reward = calculateClaimReward(account, stakeIndex);
     _stakes[account][stakeIndex].lastClaim = block.timestamp;
     if (block.timestamp >= _stakes[account][stakeIndex].expiresIn) {
@@ -323,10 +308,11 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
   }
 
   function claim() external {
-    require(_stakes[_msgSender()].length > 0, "You must have stakes to collect rewards");
+    require(_stakes[_msgSender()].length > 0);
     uint256 totalClaimReward = 0;
     address account = _msgSender();
     for (uint256 i = _lastAccountExpiriedStakeIndex[account]; i < _stakes[account].length; i++) {
+      if(_stakes[account][i].isDone) continue;
       uint256 reward = calculateClaimReward(account, i);
       _stakes[account][i].lastClaim = block.timestamp;
       if (_stakes[account][i].lastClaim >= _stakes[account][i].expiresIn) {
@@ -345,7 +331,7 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
   /* REF SECTION */
 
   function registration(address referral, address referer) internal  {
-    require(_referralToReferer[referral] == address(0), "Already tied");
+    require(_referralToReferer[referral] == address(0));
     _referralToReferer[referral] = referer;
     _refererToReferrals[referer].push(referral);
     _referralIndex[referral] = _refererToReferrals[referer].length - 1;
@@ -385,8 +371,8 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
       if (referer == address(0)) break;
       if (_onLineReferral[referer][referral] == 0) {
         _onLineReferral[referer][referral] = i;
-        _refererStats[referer][0].referralsCount++; // все рефералы на всех линиях
-        _refererStats[referer][i].referralsCount++; // все рефералы на линии i
+        _refererStats[referer][0].referralsCount++;
+        _refererStats[referer][i].referralsCount++; 
       }
       _refererStats[referer][i].totalActiveStakesSum = _refererStats[referer][i].totalActiveStakesSum.add(stakeBody);
       uint256 refererLevelIndex = getRefererLevelIndex(referer);

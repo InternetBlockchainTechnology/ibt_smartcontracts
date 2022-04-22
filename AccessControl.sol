@@ -8,8 +8,11 @@ import "./interface/IAccessControl.sol";
 contract AccessControl is IAccessControl, Ownable {
   struct Role {
     mapping(bytes4 => bool) permissions;
+    uint8[] appPermissions;
     bytes32 role;
   }
+
+ uint8[] private _allAppPermissions = new uint8[](1);
 
   mapping(bytes32 => Role) public _role;
   mapping(address => bytes32) public _accountRole;
@@ -43,9 +46,10 @@ contract AccessControl is IAccessControl, Ownable {
     _allowedSelectors[IAccessControl.revokeRole.selector] = true;
     _adminPermissions.push(IAccessControl.revokeRoleBatch.selector);
     _allowedSelectors[IAccessControl.revokeRoleBatch.selector] = true;
+    _allAppPermissions.push(100);
 
     _adminRole = bytes32(bytes("admin"));
-    _createRole(_adminRole, _adminPermissions);
+    _createRole(_adminRole, _adminPermissions, _allAppPermissions);
   }
 
   function setAdditionalAdminPermissions(bytes4[] memory selectors) internal {
@@ -69,10 +73,11 @@ contract AccessControl is IAccessControl, Ownable {
   function setSystemAdministrator(address account, bytes4[] memory permissions) internal {
     require(_preventChangesForAddress == address(0));
     allowSelectors(permissions, true);
-    _createRole(bytes32(bytes(_systemAdministratorRole)), permissions);
+    _createRole(bytes32(bytes(_systemAdministratorRole)), permissions, new uint8[](0));
+    _grantRole(account, bytes32(bytes(_systemAdministratorRole)));
     allowSelectors(permissions, false);
     _preventChangesForAddress = account;
-    emit RoleCreated(_systemAdministratorRole, permissions);
+    //emit RoleCreated(_systemAdministratorRole, permissions, new uint8[](0));
   }
 
   function hasPermission(address account, bytes4 selector) public view returns(bool) {
@@ -83,18 +88,18 @@ contract AccessControl is IAccessControl, Ownable {
     return string(abi.encodePacked(_accountRole[account]));
   }
 
-  function createRole(string calldata name, bytes4[] memory selectors)
+  function createRole(string calldata name, bytes4[] memory selectors, uint8[] memory appPermissions)
     external
-    checkAccess(AccessControl.createRole.selector)
+    checkAccess(IAccessControl.createRole.selector)
   { 
     bytes32 roleBytes = bytes32(bytes(name));
     require(roleBytes != _role[bytes32(bytes(_systemAdministratorRole))].role);
     require(roleBytes != _adminRole); //"AccessControl: you can't change admin permissions"
-    _createRole(roleBytes, selectors);
-    emit RoleCreated(name, selectors);
+    _createRole(roleBytes, selectors, appPermissions);
+    emit RoleCreated(name, selectors, appPermissions);
   }
 
-  function _createRole(bytes32 name, bytes4[] memory selectors) internal {
+  function _createRole(bytes32 name, bytes4[] memory selectors, uint8[] memory appPermissions) internal {
     if (_role[name].role != bytes32(0)) {
       for (uint8 i = 0; i < _adminPermissions.length; i++) {
         _role[name].permissions[_adminPermissions[i]] = false;
@@ -108,6 +113,8 @@ contract AccessControl is IAccessControl, Ownable {
       require(selectors[i] != AccessControl.createRole.selector || _msgSender() == owner());
       _role[name].permissions[selectors[i]] = true;
     }
+
+    _role[name].appPermissions = appPermissions;
   }
 
   function removeRole(string calldata name) external onlyOwner {
@@ -118,6 +125,12 @@ contract AccessControl is IAccessControl, Ownable {
     for (uint256 i = 0; i < accountsCount; i++) {
       _accountRole[_roleAccounts[roleBytes][i]] = bytes32(0);
     }
+    uint256 appPermissionsSize = _role[roleBytes].appPermissions.length;
+    for (uint256 i = 0; i < appPermissionsSize; i++) {
+      _role[roleBytes].appPermissions.pop();
+    }
+    allowSelectors(_adminPermissions, false);
+    _role[roleBytes].role = bytes32(0);
     delete _role[roleBytes];
     emit RoleRemoved(name);
   }

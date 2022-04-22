@@ -18,7 +18,7 @@ abstract contract Ownable is Context {
     }
 
     modifier onlyOwner() {
-        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+        require(owner() == _msgSender());
         _;
     }
 
@@ -27,7 +27,7 @@ abstract contract Ownable is Context {
     }
 
     function transferOwnership(address newOwner) public virtual onlyOwner {
-        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        require(newOwner != address(0));
         _transferOwnership(newOwner);
     }
 
