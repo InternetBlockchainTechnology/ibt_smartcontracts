@@ -16,8 +16,6 @@ interface IAccessControl {
 
   function grantRole(address account, string memory role) external;
 
-  function removeRole(string calldata name) external;
-
   function grantRoleBatch(address[] calldata accounts, string[] calldata roles) external;
 
   function revokeRole(address account) external;

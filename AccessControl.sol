@@ -117,24 +117,6 @@ contract AccessControl is IAccessControl, Ownable {
     _role[name].appPermissions = appPermissions;
   }
 
-  function removeRole(string calldata name) external onlyOwner {
-    bytes32 roleBytes = bytes32(bytes(name));
-    require(roleBytes != _role[bytes32(bytes(_systemAdministratorRole))].role); //"AccessControl: you can't remove systemAdministrator role"
-    require(roleBytes != _adminRole); //"AccessControl: you can't remove admin role"
-    uint256 accountsCount = _roleAccounts[roleBytes].length;
-    for (uint256 i = 0; i < accountsCount; i++) {
-      _accountRole[_roleAccounts[roleBytes][i]] = bytes32(0);
-    }
-    uint256 appPermissionsSize = _role[roleBytes].appPermissions.length;
-    for (uint256 i = 0; i < appPermissionsSize; i++) {
-      _role[roleBytes].appPermissions.pop();
-    }
-    allowSelectors(_adminPermissions, false);
-    _role[roleBytes].role = bytes32(0);
-    delete _role[roleBytes];
-    emit RoleRemoved(name);
-  }
-
   function grantRole(address account, string memory role) public checkAccess(IAccessControl.grantRole.selector) {
     require(account != address(0)); // "AccessControl: prevent grant zero address"
     require(account != _msgSender()); // "AccessControl: you can't grant self another role"

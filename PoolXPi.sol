@@ -159,7 +159,7 @@ contract PoolXPi is IPoolXPi, AccessControl, Pausable {
 
       if (stakeItem.createdAt >= stakeProfitTable[i][0] || stakeItem.expiresIn <= stakeProfitTable[i][1]) {
         uint256 timeFrom = stakeItem.lastClaim < stakeProfitTable[i][0] ? stakeProfitTable[i][0] : stakeItem.lastClaim;
-        uint256 timeTo = currentTimestamp > stakeProfitTable[i][1] ? stakeProfitTable[i][1] : currentTimestamp;
+        uint256 timeTo = currentTimestamp > stakeItem.expiresIn ? stakeItem.expiresIn : stakeProfitTable[i][1];
 
         totalReward = totalReward.add(calculateClaimRewardByPeriod(stakeItem.body, stakeProfitTable[i][2], timeFrom, timeTo));
       }
