@@ -110,7 +110,7 @@ contract AccessControl is IAccessControl, Ownable {
 
     for (uint8 i = 0; i < selectors.length; i++) {
       require(_allowedSelectors[selectors[i]]); //"AccessControl: one of the selectors is not allowed"
-      require(selectors[i] != AccessControl.createRole.selector || _msgSender() == owner());
+      require(selectors[i] != IAccessControl.createRole.selector || _msgSender() == owner());
       _role[name].permissions[selectors[i]] = true;
     }
 
