@@ -141,14 +141,21 @@ contract Pool is IPool, AccessControl, Pausable {
     for (uint256 i = 0; i < stakeProfitTable.length; i++) {
       if (stakeItem.expiresIn <= stakeProfitTable[i][0] || currentTimestamp <= stakeProfitTable[i][0]) break;
       if (stakeItem.createdAt >= stakeProfitTable[i][1]) continue;
+      if (stakeItem.lastClaim > stakeProfitTable[i][1]) continue;
 
       if (stakeItem.createdAt >= stakeProfitTable[i][0] || stakeItem.expiresIn <= stakeProfitTable[i][1]) {
         uint256 timeFrom = stakeItem.lastClaim < stakeProfitTable[i][0] ? stakeProfitTable[i][0] : stakeItem.lastClaim;
-        uint256 timeTo = currentTimestamp;
-        if (currentTimestamp >= stakeItem.expiresIn) {
-          timeTo = stakeItem.expiresIn;
-        } else if (currentTimestamp > stakeProfitTable[i][1]) {
+
+        bool currentTimestampOverOrExpires = currentTimestamp >= stakeItem.expiresIn;
+        bool expiresIsOverPeriod = stakeItem.expiresIn > stakeProfitTable[i][1];
+        bool currentTimestampOverPeriod = currentTimestamp > stakeProfitTable[i][1];
+
+        uint256 timeTo = stakeItem.expiresIn;
+
+        if (expiresIsOverPeriod && currentTimestampOverPeriod) {
           timeTo = stakeProfitTable[i][1];
+        } else if (!currentTimestampOverOrExpires && !currentTimestampOverPeriod) {
+          timeTo = currentTimestamp;
         }
 
         totalReward = totalReward.add(calculateClaimRewardByPeriod(stakeItem.body, stakeProfitTable[i][2], timeFrom, timeTo));
